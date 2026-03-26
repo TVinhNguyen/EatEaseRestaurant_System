@@ -42,7 +42,7 @@ import WaiterBoardPage from '../pages/WaiterBoardPage';
 import DashboardRouter from '../pages/DashboardRouter';
 import ChefDashboard from '@/pages/ChefDashboard';
 import CashierDashboard from '@/pages/CashierDashboard';
-import SupportChatCustomer from '@/pages/SupportChatCustomer';
+import UnifiedChatPage from '@/pages/UnifiedChatPage';
 
 const router = createBrowserRouter([
     {
@@ -184,7 +184,7 @@ const router = createBrowserRouter([
                     { path: 'profile', element: <Profile /> },
                     {
                         path: 'chat-support-customer',
-                        element: <SupportChatCustomer />,
+                        element: <UnifiedChatPage />,
                     },
                     {
                         path: 'category',

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import Axios from '../utils/Axios';
 import SummaryApi from '../common/SummaryApi';
 import AxiosToastError from '../utils/AxiosToastError';
@@ -14,10 +15,10 @@ import {
 
 // Quick suggestion buttons
 const QUICK_SUGGESTIONS = [
-    'Cửa hàng bán sản phẩm gì?',
-    'Chính sách đổi trả?',
-    'Cách đặt hàng?',
-    'Có mã giảm giá không?',
+    'Món đặc biệt của nhà hàng?',
+    'Có món nào cay không?',
+    'Món chay có gì?',
+    'Món nào nhanh nhất?',
 ];
 
 function ChatBubble({ role, text }) {

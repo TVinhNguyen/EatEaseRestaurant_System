@@ -1,9 +1,6 @@
 import { Button } from '../components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '../components/ui/sheet';
-import {
-    Menu,
-    MessageSquare,
-} from 'lucide-react';
+import { Menu, MessageSquare } from 'lucide-react';
 import logo from '../assets/logo.png';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -12,6 +9,9 @@ import {
     FaCaretDown,
     FaCaretUp,
     FaCalendarAlt,
+    FaHome,
+    FaInfoCircle,
+    FaPhone,
 } from 'react-icons/fa';
 // eslint-disable-next-line no-unused-vars
 import { AnimatePresence, motion } from 'framer-motion';
@@ -36,6 +36,11 @@ export default function Header() {
 
     const links = [
         {
+            href: '/',
+            icon: <FaHome size={14} />,
+            label: 'Trang chủ',
+        },
+        {
             href: firstCategory
                 ? `/${valideURLConvert(firstCategory.name)}-${firstCategory._id}`
                 : '/products',
@@ -43,9 +48,14 @@ export default function Header() {
             label: 'Thực đơn',
         },
         {
-            href: '/booking',
-            icon: <FaCalendarAlt size={14} />,
-            label: 'Đặt bàn',
+            href: '/about',
+            icon: <FaInfoCircle size={14} />,
+            label: 'Giới thiệu',
+        },
+        {
+            href: '/contact',
+            icon: <FaPhone size={14} />,
+            label: 'Liên hệ',
         },
     ];
 
@@ -57,7 +67,9 @@ export default function Header() {
         const handleClick = (event) => {
             if (!menuRef.current) return;
             const isClickInside = menuRef.current.contains(event.target);
-            const isToggleButton = event.target.closest('button[aria-haspopup="true"]');
+            const isToggleButton = event.target.closest(
+                'button[aria-haspopup="true"]'
+            );
             if (!isClickInside && !isToggleButton) {
                 setOpenUserMenu(false);
             }
@@ -85,42 +97,60 @@ export default function Header() {
 
     const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
+    const handleClickBooking = (e) => {
+        if (!user?._id) {
+            e.preventDefault();
+            redirectToLoginPage();
+        } else {
+            scrollToTop();
+        }
+    };
+
     return (
         <>
-            <header className="sticky top-0 z-50 p-4 text-red-500 dark:text-red-50 font-semibold">
+            <header className="sticky top-0 z-50 p-4 dark:text-red-50 font-semibold">
                 <div className="container mx-auto">
                     <div className="flex h-16 items-center justify-between px-6 liquid-glass-header rounded-full">
                         {/* Brand Logo */}
-                        <Link to="/" onClick={scrollToTop} className="flex items-center gap-1.5">
-                            <img src={logo} alt="EatEase logo" width={25} height={25} className="h-5 w-5" />
-                            <span className="font-semibold tracking-wide">EatEase</span>
+                        <Link
+                            to="/"
+                            onClick={scrollToTop}
+                            className="flex items-center justify-center gap-1.5"
+                        >
+                            <img
+                                src={logo}
+                                alt="EatEase logo"
+                                width={25}
+                                height={25}
+                                className="h-5 w-5"
+                            />
+                            <span className="text-orange-800 font-semibold text-lg tracking-wide">
+                                EatEase
+                            </span>
                         </Link>
 
                         {/* Desktop Nav */}
                         <div className="hidden md:flex items-center gap-6">
                             <nav className="flex items-center gap-6 text-sm">
                                 {links.map((l) => {
-                                    const isBookingLink = l.href === '/booking';
-                                    const handleClick = (e) => {
-                                        if (isBookingLink && !user?._id) {
-                                            e.preventDefault();
-                                            redirectToLoginPage();
-                                        } else {
-                                            scrollToTop();
-                                        }
-                                    };
                                     return (
                                         <Link
                                             key={l.href}
                                             to={l.href}
-                                            onClick={handleClick}
-                                            className="hover:text-foreground/80 transition-colors flex items-center gap-[6px]"
+                                            className="hover:text-orange-500 transition-colors flex items-center gap-[6px]"
                                         >
                                             {l.label}
                                         </Link>
                                     );
                                 })}
                             </nav>
+                            <Link
+                                to="/booking"
+                                onClick={handleClickBooking}
+                                className="bg-orange-700 text-white px-8 py-2 rounded-full text-sm font-medium tracking-wide hover:opacity-90 transition-all active:scale-95"
+                            >
+                                Đặt bàn
+                            </Link>
                         </div>
 
                         {/* User Actions */}
@@ -138,7 +168,9 @@ export default function Header() {
                                                 <MessageSquare className="h-5 w-5" />
                                                 {unreadCount > 0 && (
                                                     <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border-2 border-[#1a1a1a]">
-                                                        {unreadCount > 9 ? '9+' : unreadCount}
+                                                        {unreadCount > 9
+                                                            ? '9+'
+                                                            : unreadCount}
                                                     </span>
                                                 )}
                                             </Link>
@@ -154,7 +186,10 @@ export default function Header() {
                                             >
                                                 <div className="relative p-0.5 overflow-hidden rounded-full liquid-glass-2">
                                                     <img
-                                                        src={user.avatar || defaultAvatar}
+                                                        src={
+                                                            user.avatar ||
+                                                            defaultAvatar
+                                                        }
                                                         alt={user.name}
                                                         className="w-8 h-8 rounded-full object-cover"
                                                         width={32}
@@ -172,21 +207,44 @@ export default function Header() {
                                                     )}
                                                 </div>
                                                 {openUserMenu ? (
-                                                    <FaCaretUp className="flex-shrink-0 ml-2" size={15} />
+                                                    <FaCaretUp
+                                                        className="flex-shrink-0 ml-2"
+                                                        size={15}
+                                                    />
                                                 ) : (
-                                                    <FaCaretDown className="flex-shrink-0 ml-2" size={15} />
+                                                    <FaCaretDown
+                                                        className="flex-shrink-0 ml-2"
+                                                        size={15}
+                                                    />
                                                 )}
                                             </button>
                                             <AnimatePresence>
                                                 {openUserMenu && (
                                                     <motion.div
                                                         className="absolute right-0 top-full mt-2 z-50 w-64"
-                                                        initial={{ opacity: 0, y: -10 }}
-                                                        animate={{ opacity: 1, y: 0 }}
-                                                        exit={{ opacity: 0, y: -10 }}
-                                                        transition={{ duration: 0.15, ease: 'easeOut' }}
+                                                        initial={{
+                                                            opacity: 0,
+                                                            y: -10,
+                                                        }}
+                                                        animate={{
+                                                            opacity: 1,
+                                                            y: 0,
+                                                        }}
+                                                        exit={{
+                                                            opacity: 0,
+                                                            y: -10,
+                                                        }}
+                                                        transition={{
+                                                            duration: 0.15,
+                                                            ease: 'easeOut',
+                                                        }}
                                                     >
-                                                        <UserMenu close={closeMenu} menuTriggerRef={menuRef} />
+                                                        <UserMenu
+                                                            close={closeMenu}
+                                                            menuTriggerRef={
+                                                                menuRef
+                                                            }
+                                                        />
                                                     </motion.div>
                                                 )}
                                             </AnimatePresence>
@@ -205,7 +263,10 @@ export default function Header() {
 
                         {/* Mobile Nav */}
                         <div className="md:hidden">
-                            <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+                            <Sheet
+                                open={isMobileMenuOpen}
+                                onOpenChange={setIsMobileMenuOpen}
+                            >
                                 <SheetTrigger asChild>
                                     <Button
                                         variant="outline"
@@ -213,14 +274,31 @@ export default function Header() {
                                         className="border-gray-700 bg-gray-800 hover:bg-gray-600 hover:text-lime-300"
                                     >
                                         <Menu className="h-5 w-5" />
-                                        <span className="sr-only">Open menu</span>
+                                        <span className="sr-only">
+                                            Open menu
+                                        </span>
                                     </Button>
                                 </SheetTrigger>
-                                <SheetContent side="right" className="liquid-glass border-gray-800 p-0 w-72 flex flex-col">
+                                <SheetContent
+                                    side="right"
+                                    className="liquid-glass border-gray-800 p-0 w-72 flex flex-col"
+                                >
                                     <div className="flex items-center gap-1.5 px-4 py-4 border-b border-gray-800">
-                                        <Link to="/" onClick={scrollToTop} className="flex items-center gap-1.5">
-                                            <img src={logo} alt="EatEase logo" width={25} height={25} className="h-5 w-5" />
-                                            <span className="font-semibold tracking-wide">EatEase</span>
+                                        <Link
+                                            to="/"
+                                            onClick={scrollToTop}
+                                            className="flex items-center gap-1.5"
+                                        >
+                                            <img
+                                                src={logo}
+                                                alt="EatEase logo"
+                                                width={25}
+                                                height={25}
+                                                className="h-5 w-5"
+                                            />
+                                            <span className="font-semibold tracking-wide">
+                                                EatEase
+                                            </span>
                                         </Link>
                                     </div>
                                     <div className="px-2">
@@ -228,9 +306,13 @@ export default function Header() {
                                     </div>
                                     <nav className="flex flex-col gap-1 mt-2 text-gray-200">
                                         {links.map((l) => {
-                                            const isBookingLink = l.href === '/booking';
+                                            const isBookingLink =
+                                                l.href === '/booking';
                                             const handleClick = () => {
-                                                if (isBookingLink && !user?._id) {
+                                                if (
+                                                    isBookingLink &&
+                                                    !user?._id
+                                                ) {
                                                     redirectToLoginPage();
                                                     closeMobileMenu();
                                                 } else {
@@ -242,12 +324,21 @@ export default function Header() {
                                             return (
                                                 <Link
                                                     key={l.href}
-                                                    to={isBookingLink && !user?._id ? '#' : l.href}
+                                                    to={
+                                                        isBookingLink &&
+                                                        !user?._id
+                                                            ? '#'
+                                                            : l.href
+                                                    }
                                                     onClick={handleClick}
                                                     className="flex items-center gap-3 px-4 py-3 hover:bg-gray-900 hover:text-purple-400 transition-colors"
                                                 >
-                                                    <span className="inline-flex items-center justify-center w-5 h-5">{l.icon}</span>
-                                                    <span className="text-sm">{l.label}</span>
+                                                    <span className="inline-flex items-center justify-center w-5 h-5">
+                                                        {l.icon}
+                                                    </span>
+                                                    <span className="text-sm">
+                                                        {l.label}
+                                                    </span>
                                                 </Link>
                                             );
                                         })}
@@ -255,18 +346,26 @@ export default function Header() {
                                     <div className="mt-auto border-t border-gray-800 p-4">
                                         <div className="flex items-center justify-center w-full gap-5">
                                             {user?._id ? (
-                                                <div className="relative w-full" ref={menuRef}>
+                                                <div
+                                                    className="relative w-full"
+                                                    ref={menuRef}
+                                                >
                                                     <button
                                                         onClick={toggleUserMenu}
                                                         className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg hover:bg-white/10 transition-colors"
-                                                        aria-expanded={openUserMenu}
+                                                        aria-expanded={
+                                                            openUserMenu
+                                                        }
                                                         aria-haspopup="true"
                                                         aria-label="User menu"
                                                         type="button"
                                                     >
                                                         <div className="relative p-0.5 overflow-hidden rounded-full liquid-glass">
                                                             <img
-                                                                src={user.avatar || defaultAvatar}
+                                                                src={
+                                                                    user.avatar ||
+                                                                    defaultAvatar
+                                                                }
                                                                 alt={user.name}
                                                                 className="w-8 h-8 rounded-full object-cover"
                                                                 width={32}
@@ -274,29 +373,58 @@ export default function Header() {
                                                             />
                                                         </div>
                                                         <div className="flex flex-col items-start flex-1 min-w-0">
-                                                            <span className="text-sm font-medium">{user.name}</span>
-                                                            {user.role === 'ADMIN' && (
-                                                                <span className="text-xs text-purple-400">Quản trị viên</span>
+                                                            <span className="text-sm font-medium">
+                                                                {user.name}
+                                                            </span>
+                                                            {user.role ===
+                                                                'ADMIN' && (
+                                                                <span className="text-xs text-purple-400">
+                                                                    Quản trị
+                                                                    viên
+                                                                </span>
                                                             )}
                                                         </div>
                                                         {openUserMenu ? (
-                                                            <FaCaretDown className="flex-shrink-0 ml-2" size={15} />
+                                                            <FaCaretDown
+                                                                className="flex-shrink-0 ml-2"
+                                                                size={15}
+                                                            />
                                                         ) : (
-                                                            <FaCaretUp className="flex-shrink-0 ml-2" size={15} />
+                                                            <FaCaretUp
+                                                                className="flex-shrink-0 ml-2"
+                                                                size={15}
+                                                            />
                                                         )}
                                                     </button>
                                                     <AnimatePresence>
                                                         {openUserMenu && (
                                                             <motion.div
                                                                 className="absolute right-0 bottom-full mb-2 z-50 w-64"
-                                                                initial={{ opacity: 0, y: 10 }}
-                                                                animate={{ opacity: 1, y: 0 }}
-                                                                exit={{ opacity: 0, y: -10 }}
-                                                                transition={{ duration: 0.15, ease: 'easeOut' }}
+                                                                initial={{
+                                                                    opacity: 0,
+                                                                    y: 10,
+                                                                }}
+                                                                animate={{
+                                                                    opacity: 1,
+                                                                    y: 0,
+                                                                }}
+                                                                exit={{
+                                                                    opacity: 0,
+                                                                    y: -10,
+                                                                }}
+                                                                transition={{
+                                                                    duration: 0.15,
+                                                                    ease: 'easeOut',
+                                                                }}
                                                             >
                                                                 <UserMenu
-                                                                    close={() => { closeMenu(); closeMobileMenu(); }}
-                                                                    menuTriggerRef={menuRef}
+                                                                    close={() => {
+                                                                        closeMenu();
+                                                                        closeMobileMenu();
+                                                                    }}
+                                                                    menuTriggerRef={
+                                                                        menuRef
+                                                                    }
                                                                 />
                                                             </motion.div>
                                                         )}
@@ -304,7 +432,12 @@ export default function Header() {
                                                 </div>
                                             ) : (
                                                 <button
-                                                    onClick={() => { redirectToLoginPage(); closeMenu(); closeMobileMenu(); scrollToTop(); }}
+                                                    onClick={() => {
+                                                        redirectToLoginPage();
+                                                        closeMenu();
+                                                        closeMobileMenu();
+                                                        scrollToTop();
+                                                    }}
                                                     className="w-full bg-lime-400 text-black font-medium rounded-lg px-6 py-2.5 hover:bg-lime-300 hover:shadow-md hover:scale-[1.02] transition-all"
                                                 >
                                                     Đăng nhập

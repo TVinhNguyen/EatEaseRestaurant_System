@@ -420,7 +420,8 @@ const ChartsTab = () => {
     const [filters, setFilters] = useState({ search: '', status: '', startDate: '', endDate: '' });
 
     useEffect(() => {
-        if (!localStorage.getItem('accesstoken') || user?.role !== 'ADMIN') { navigate('/dashboard/profile'); return; }
+        const allowedRoles = ['ADMIN', 'WAITER', 'CASHIER'];
+        if (!localStorage.getItem('accesstoken') || !allowedRoles.includes(user?.role)) { navigate('/dashboard/profile'); return; }
         dispatch(fetchAllOrders(filters));
     }, [dispatch, navigate, user, filters]);
 

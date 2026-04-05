@@ -233,6 +233,10 @@ const SummaryApi = {
     },
 
     // Support Chat (Admin REST)
+    get_my_support_conversation: {
+        url: '/api/support/my-conversation',
+        method: 'get'
+    },
     get_support_conversations: {
         url: '/api/support/conversations',
         method: 'get'

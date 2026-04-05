@@ -1,15 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTheme } from 'next-themes';
-import Axios from '../utils/Axios';
-import SummaryApi from '../common/SummaryApi';
 import { Bot, X, Send, Sparkles, ChevronDown, Maximize } from 'lucide-react';
-
-/* ── Design tokens — khớp home page ──────────────────────────────
- * Brand rose-orange : #C96048  (AI giữ violet/indigo để phân biệt)
- * Glassmorphism     : backdrop-blur + border/white semi-transparent
- * CSS vars          : bg-background, bg-card, border-border, text-foreground
- * ───────────────────────────────────────────────────────────────── */
+import { useSupportChat } from '../contexts/SupportChatContext';
 
 const QUICK_SUGGESTIONS = [
     'Món đặc biệt của nhà hàng?',
@@ -70,23 +63,20 @@ function TypingIndicator() {
  * AiChatBox — controlled mode
  *   isOpen  {boolean}  — do FloatingChatLauncher điều khiển
  *   onClose {function} — callback khi người dùng đóng
+ *
+ *   AI messages được chia sẻ qua SupportChatContext → đồng bộ với UnifiedChatPage
  */
 export default function AiChatBox({ isOpen = false, onClose }) {
     const { theme } = useTheme();
+    const { aiMessages, aiLoading, aiCooldown, sendAIMessage } = useSupportChat();
+
     const [isMinimized, setIsMinimized] = useState(false);
     const [input, setInput] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [cooldown, setCooldown] = useState(0);
-    const [messages, setMessages] = useState([
-        {
-            role: 'bot',
-            text: 'Xin chào! 👋 Tôi là trợ lý AI của EatEase. Tôi có thể giúp bạn tìm món ăn, giải đáp thắc mắc về thực đơn, đặt bàn và nhiều hơn nữa. Bạn cần hỗ trợ gì?',
-        },
-    ]);
+
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
-    const cooldownRef = useRef(null);
 
+    // Focus input when opened
     useEffect(() => {
         if (isOpen) {
             setIsMinimized(false);
@@ -94,55 +84,18 @@ export default function AiChatBox({ isOpen = false, onClose }) {
         }
     }, [isOpen]);
 
+    // Scroll to bottom when messages change
     useEffect(() => {
         if (isOpen && !isMinimized) {
             messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         }
-    }, [messages, isOpen, isMinimized]);
+    }, [aiMessages, isOpen, isMinimized]);
 
-    const startCooldown = (seconds = 5) => {
-        setCooldown(seconds);
-        clearInterval(cooldownRef.current);
-        cooldownRef.current = setInterval(() => {
-            setCooldown((prev) => {
-                if (prev <= 1) { clearInterval(cooldownRef.current); return 0; }
-                return prev - 1;
-            });
-        }, 1000);
-    };
-
-    const handleSend = async (messageText) => {
+    const handleSend = (messageText) => {
         const text = (messageText || input).trim();
-        if (!text || loading || cooldown > 0) return;
-
-        const userMsg = { role: 'user', text };
-        const newMessages = [...messages, userMsg];
-        setMessages(newMessages);
+        if (!text) return;
+        sendAIMessage(text);
         setInput('');
-        setLoading(true);
-
-        try {
-            const history = newMessages.slice(1, -1).map((msg) => ({
-                role: msg.role,
-                text: msg.text,
-            }));
-            const response = await Axios({
-                ...SummaryApi.chat_message,
-                data: { message: text, history },
-            });
-            if (response.data?.success) {
-                setMessages((prev) => [...prev, { role: 'bot', text: response.data.data.reply }]);
-            }
-        } catch (error) {
-            const serverMsg = error?.response?.data?.message;
-            setMessages((prev) => [
-                ...prev,
-                { role: 'bot', text: serverMsg || 'Xin lỗi, có lỗi xảy ra. Vui lòng thử lại sau ít phút! 🙏' },
-            ]);
-        } finally {
-            setLoading(false);
-            startCooldown(5);
-        }
     };
 
     const handleKeyDown = (e) => {
@@ -190,7 +143,6 @@ export default function AiChatBox({ isOpen = false, onClose }) {
                 style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)' }}
             >
                 <div className="flex items-center gap-2.5">
-                    {/* Avatar với shimmer ring */}
                     <div className="relative w-9 h-9 rounded-full bg-white/15 backdrop-blur flex items-center justify-center shadow-inner">
                         <Bot size={17} className="text-white" />
                         <span className="absolute inset-0 rounded-full ring-1 ring-white/25" />
@@ -208,7 +160,7 @@ export default function AiChatBox({ isOpen = false, onClose }) {
                     </div>
                 </div>
                 <div className="flex items-center gap-0.5">
-                    {/* Desktop only: Maximize button */}
+                    {/* Maximize → mở trang chat lớn */}
                     <Link
                         to="/dashboard/chat-support-customer"
                         className="hidden md:flex w-7 h-7 rounded-full hover:bg-white/15 items-center justify-center text-white/70 hover:text-white transition"
@@ -216,7 +168,7 @@ export default function AiChatBox({ isOpen = false, onClose }) {
                     >
                         <Maximize size={14} />
                     </Link>
-                    {/* Desktop only: Minimize button */}
+                    {/* Minimize */}
                     <button
                         onClick={() => setIsMinimized((v) => !v)}
                         className="hidden md:flex w-7 h-7 rounded-full hover:bg-white/15 items-center justify-center text-white/70 hover:text-white transition cursor-pointer"
@@ -247,21 +199,17 @@ export default function AiChatBox({ isOpen = false, onClose }) {
             {!isMinimized && (
                 <>
                     {/* Messages area */}
-                    <div
-                        className="ai-chat-scroll flex-1 overflow-y-auto px-3 pt-4 pb-2 bg-background dark:bg-gray-950"
-                    >
-                        {messages.map((msg, i) => (
+                    <div className="ai-chat-scroll flex-1 overflow-y-auto px-3 pt-4 pb-2 bg-background dark:bg-gray-950">
+                        {aiMessages.map((msg, i) => (
                             <ChatBubble key={i} role={msg.role} text={msg.text} />
                         ))}
-                        {loading && <TypingIndicator />}
+                        {aiLoading && <TypingIndicator />}
                         <div ref={messagesEndRef} />
                     </div>
 
-                    {/* Quick suggestions */}
-                    {messages.length === 1 && !loading && (
-                        <div
-                            className="px-3 pb-2 pt-2 flex flex-wrap gap-1.5 bg-background dark:bg-gray-950"
-                        >
+                    {/* Quick suggestions — chỉ hiện khi chỉ có tin nhắn greeting */}
+                    {aiMessages.length === 1 && !aiLoading && (
+                        <div className="px-3 pb-2 pt-2 flex flex-wrap gap-1.5 bg-background dark:bg-gray-950">
                             {QUICK_SUGGESTIONS.map((s) => (
                                 <button
                                     key={s}
@@ -280,12 +228,8 @@ export default function AiChatBox({ isOpen = false, onClose }) {
                     )}
 
                     {/* Input bar */}
-                    <div
-                        className="px-3 pb-3 pt-2 flex-shrink-0 border-t border-border bg-card dark:bg-gray-900"
-                    >
-                        <div
-                            className="flex items-end gap-2 rounded-xl px-3 py-2 bg-background dark:bg-gray-950 border border-border"
-                        >
+                    <div className="px-3 pb-3 pt-2 flex-shrink-0 border-t border-border bg-card dark:bg-gray-900">
+                        <div className="flex items-end gap-2 rounded-xl px-3 py-2 bg-background dark:bg-gray-950 border border-border">
                             <textarea
                                 ref={inputRef}
                                 value={input}
@@ -293,18 +237,18 @@ export default function AiChatBox({ isOpen = false, onClose }) {
                                 onKeyDown={handleKeyDown}
                                 placeholder="Hỏi tôi bất cứ điều gì..."
                                 rows={1}
-                                disabled={loading}
+                                disabled={aiLoading}
                                 className="flex-1 resize-none bg-transparent text-sm placeholder-gray-400 dark:placeholder-gray-500 outline-none leading-relaxed max-h-24 overflow-y-auto text-foreground"
                             />
                             <button
                                 onClick={() => handleSend()}
-                                disabled={loading || !input.trim() || cooldown > 0}
+                                disabled={aiLoading || !input.trim() || aiCooldown > 0}
                                 className="flex-shrink-0 w-8 h-8 rounded-lg text-white flex items-center justify-center
                                            hover:opacity-90 disabled:opacity-35 disabled:cursor-not-allowed
                                            transition active:scale-95 cursor-pointer text-[11px] font-bold shadow"
                                 style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}
                             >
-                                {cooldown > 0 ? cooldown : <Send size={13} />}
+                                {aiCooldown > 0 ? aiCooldown : <Send size={13} />}
                             </button>
                         </div>
                         <p className="text-center text-[10px] mt-1.5 text-muted-foreground">

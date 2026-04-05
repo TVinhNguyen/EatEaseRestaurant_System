@@ -150,13 +150,14 @@ export default function WaiterBoardPage() {
                 duration: 10000,
                 style: { border: '2px solid #3b82f6' },
             });
-            setChatRequests((prev) => [data, ...prev]);
+            setChatRequests((prev) => [{ ...data, _isNewRequest: true }, ...prev]);
             setUnreadCount((prev) => prev + 1);
         });
 
         s.on('waiter:acceptSuccess', (data) => {
             console.log('[Waiter] Accept success data:', data);
             toast.success(`✅ Đã nhận chat từ ${data.customerName}`);
+            // Remove from pending list (unreadCount đã giảm trước khi bấm accept)
             setChatRequests((prev) => prev.filter(r => r.conversationId !== data.conversationId));
             
             const newConversation = {
@@ -177,11 +178,19 @@ export default function WaiterBoardPage() {
 
         s.on('waiter:acceptFailed', (data) => {
             toast.error(data.message);
+            // Không giảm unreadCount ở đây vì request vẫn còn (chỉ waiter khác nhận thì mới giảm)
             setChatRequests((prev) => prev.filter(r => r.conversationId !== data.conversationId));
         });
 
         s.on('waiter:requestAccepted', (data) => {
-            setChatRequests((prev) => prev.filter(r => r.conversationId !== data.conversationId));
+            // Waiter khác đã accept → xóa khỏi pending list và giảm unreadCount
+            setChatRequests((prev) => {
+                const existed = prev.some(r => r.conversationId === data.conversationId);
+                if (existed) {
+                    setUnreadCount((c) => Math.max(0, c - 1));
+                }
+                return prev.filter(r => r.conversationId !== data.conversationId);
+            });
         });
 
         s.on('waiter:conversationJoined', (data) => {
@@ -292,6 +301,12 @@ export default function WaiterBoardPage() {
     const acceptChatRequest = (conversationId) => {
         console.log('[Waiter] Accepting chat request:', conversationId);
         if (!socketRef.current) return;
+        // Giảm unreadCount ngay khi bấm Nhận — request của bản thân không còn "mới"
+        setChatRequests((prev) => {
+            const existed = prev.some(r => r.conversationId === conversationId);
+            if (existed) setUnreadCount((c) => Math.max(0, c - 1));
+            return prev;
+        });
         socketRef.current.emit('waiter:acceptRequest', {
             conversationId,
             waiterId: user?._id || 'waiter_temp',
@@ -505,32 +520,60 @@ export default function WaiterBoardPage() {
                                         </button>
                                     </div>
                                     <div className="max-h-96 overflow-y-auto custom-scrollbar">
-                                        {myConversations.filter(c => c.unread > 0).length === 0 ? (
+                                        {/* Pending requests chưa ai nhận */}
+                                        {chatRequests.length > 0 && (
+                                            <>
+                                                <p className="px-4 pt-3 pb-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Yêu cầu chờ</p>
+                                                {chatRequests.map(req => (
+                                                    <div
+                                                        key={req.conversationId}
+                                                        onClick={() => {
+                                                            acceptChatRequest(req.conversationId);
+                                                            setShowNotifications(false);
+                                                        }}
+                                                        className="px-4 py-3 border-b border-border hover:bg-blue-50 dark:hover:bg-blue-950/20 cursor-pointer transition"
+                                                    >
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <p className="font-semibold text-foreground flex items-center gap-1.5">
+                                                                <BsChatDots className="text-blue-500" size={13} />
+                                                                {req.customerName}
+                                                            </p>
+                                                            <span className="text-[10px] bg-blue-500 text-white px-2 py-0.5 rounded-full font-bold">Mới</span>
+                                                        </div>
+                                                        <p className="text-xs text-muted-foreground">Nhấn để nhận yêu cầu hỗ trợ</p>
+                                                    </div>
+                                                ))}
+                                            </>
+                                        )}
+                                        {/* Conversations đã nhận, có tin chưa đọc */}
+                                        {myConversations.filter(c => c.unread > 0).length > 0 && (
+                                            <>
+                                                <p className="px-4 pt-3 pb-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Tin chưa đọc</p>
+                                                {myConversations.filter(c => c.unread > 0).map(conv => (
+                                                    <div
+                                                        key={conv.conversationId}
+                                                        onClick={() => {
+                                                            openChat(conv.conversationId);
+                                                            setShowNotifications(false);
+                                                        }}
+                                                        className="px-4 py-3 border-b border-border hover:bg-accent cursor-pointer transition"
+                                                    >
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <p className="font-semibold text-foreground">{conv.customerName}</p>
+                                                            <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-bold">{conv.unread}</span>
+                                                        </div>
+                                                        <p className="text-sm text-muted-foreground truncate">
+                                                            {conv.messages?.[conv.messages.length - 1]?.text || 'Tin nhắn mới'}
+                                                        </p>
+                                                    </div>
+                                                ))}
+                                            </>
+                                        )}
+                                        {chatRequests.length === 0 && myConversations.filter(c => c.unread > 0).length === 0 && (
                                             <div className="p-6 text-center text-muted-foreground">
                                                 <FiBell size={32} className="mx-auto mb-2 opacity-30" />
-                                                <p className="text-sm">Không có tin nhắn mới</p>
+                                                <p className="text-sm">Không có thông báo mới</p>
                                             </div>
-                                        ) : (
-                                            myConversations.filter(c => c.unread > 0).map(conv => (
-                                                <div
-                                                    key={conv.conversationId}
-                                                    onClick={() => {
-                                                        openChat(conv.conversationId);
-                                                        setShowNotifications(false);
-                                                    }}
-                                                    className="px-4 py-3 border-b border-border hover:bg-accent cursor-pointer transition"
-                                                >
-                                                    <div className="flex items-center justify-between mb-1">
-                                                        <p className="font-semibold text-foreground">{conv.customerName}</p>
-                                                        <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-bold">
-                                                            {conv.unread}
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-sm text-muted-foreground truncate">
-                                                        {conv.messages?.[conv.messages.length - 1]?.text || 'Tin nhắn mới'}
-                                                    </p>
-                                                </div>
-                                            ))
                                         )}
                                     </div>
                                 </div>

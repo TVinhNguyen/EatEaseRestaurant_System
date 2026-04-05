@@ -98,6 +98,7 @@ export default function SupportChatBox({ isOpen = false, onClose }) {
         assignedWaiterName,
         customerName,
         showNameForm,
+        chatDaysLeft,
         initializeConnection,
         submitGuestName,
         sendMessage,
@@ -380,6 +381,13 @@ export default function SupportChatBox({ isOpen = false, onClose }) {
                                         <p className="text-xs text-muted-foreground">
                                             Hội thoại đã được đóng. Cảm ơn bạn đã liên hệ!
                                         </p>
+                                        {chatDaysLeft !== null && chatDaysLeft >= 0 && (
+                                            <p className="text-[10px] text-muted-foreground/70 italic">
+                                                {chatDaysLeft > 0
+                                                    ? `📋 Lịch sử chat sẽ tự xóa sau ${chatDaysLeft} ngày`
+                                                    : '📋 Lịch sử chat sẽ sớm bị xóa'}
+                                            </p>
+                                        )}
                                         <button
                                             onClick={handleNewChat}
                                             className="px-4 py-1.5 rounded-full text-xs font-medium text-white hover:opacity-90 active:scale-95 transition cursor-pointer shadow-md"

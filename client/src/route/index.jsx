@@ -155,12 +155,15 @@ const router = createBrowserRouter([
                 children: [
                     { index: true, element: <DashboardRouter /> },
                     { path: 'profile', element: <Profile /> },
-                    { path: 'chat-support-customer', element: <UnifiedChatPage /> },
-                    
+                    {
+                        path: 'chat-support-customer',
+                        element: <UnifiedChatPage />,
+                    },
+
                     // === USER PAGES ===
                     { path: 'my-orders', element: <MyOrdersPage /> },
                     { path: 'address', element: <AddressPage /> },
-                    
+
                     // === STAFF BOARDS ===
                     {
                         path: 'waiter-board',
@@ -186,7 +189,7 @@ const router = createBrowserRouter([
                             </RoleGuard>
                         ),
                     },
-                    
+
                     {
                         path: 'category',
                         element: (

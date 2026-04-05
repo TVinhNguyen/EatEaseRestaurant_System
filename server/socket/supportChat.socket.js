@@ -106,6 +106,7 @@ export function registerSupportChatSocket(io) {
                     createdAt: new Date(),
                 };
 
+                const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
                 const chat = await SupportChat.findOneAndUpdate(
                     { conversationId, status: "open" },
                     {
@@ -113,6 +114,7 @@ export function registerSupportChatSocket(io) {
                         $inc: { unreadByWaiter: 1 },
                         lastMessage: text.trim(),
                         lastMessageAt: new Date(),
+                        expiresAt: sevenDaysFromNow, // reset TTL mỗi khi có tin nhắn
                     },
                     { new: true }
                 );
@@ -281,6 +283,7 @@ export function registerSupportChatSocket(io) {
                     createdAt: new Date(),
                 };
 
+                const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
                 const updatedChat = await SupportChat.findOneAndUpdate(
                     { conversationId, status: "open" },
                     {
@@ -288,7 +291,8 @@ export function registerSupportChatSocket(io) {
                         $inc: { unreadByCustomer: 1 },
                         lastMessage: text.trim(),
                         lastMessageAt: new Date(),
-                        requestStatus: "active", // Chuyển sang active khi bắt đầu chat
+                        requestStatus: "active",
+                        expiresAt: sevenDaysFromNow, // reset TTL mỗi khi có tin nhắn
                     },
                     { new: true }
                 );
@@ -323,11 +327,13 @@ export function registerSupportChatSocket(io) {
                     return;
                 }
 
+                const threeDaysFromNow = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
                 await SupportChat.findOneAndUpdate(
                     { conversationId },
                     { 
                         status: "closed",
-                        requestStatus: "closed"
+                        requestStatus: "closed",
+                        expiresAt: threeDaysFromNow, // Đóng rồi: còn 3 ngày để xem lại
                     }
                 );
                 

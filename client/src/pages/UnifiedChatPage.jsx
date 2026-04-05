@@ -1,10 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
-import { useTheme } from 'next-themes';
 import Axios from '../utils/Axios';
 import SummaryApi from '../common/SummaryApi';
-import { Bot, Headphones, RefreshCw, Wifi, WifiOff, Send, Sparkles } from 'lucide-react';
+import {
+    Bot,
+    Headphones,
+    RefreshCw,
+    Wifi,
+    WifiOff,
+    Send,
+    Sparkles,
+} from 'lucide-react';
 import Divider from '@/components/Divider';
 import { useSupportChat } from '../contexts/SupportChatContext';
 
@@ -37,7 +44,11 @@ function TypingIndicator({ type = 'support' }) {
                         : 'linear-gradient(135deg, #C96048 0%, #d97a66 100%)',
                 }}
             >
-                {isAI ? <Bot size={13} className="text-white" /> : <Headphones size={13} className="text-white" />}
+                {isAI ? (
+                    <Bot size={13} className="text-white" />
+                ) : (
+                    <Headphones size={13} className="text-white" />
+                )}
             </div>
             <div className="bg-card dark:bg-gray-800 border border-border px-4 py-3 rounded-2xl rounded-bl-sm shadow-sm">
                 <div className="flex gap-1 items-center">
@@ -58,11 +69,10 @@ function TypingIndicator({ type = 'support' }) {
 }
 
 export default function UnifiedChatPage() {
-    const { theme } = useTheme();
     const user = useSelector((s) => s.user);
     const [searchParams] = useSearchParams();
-    
-    // Get support chat state from context
+
+    // Support chat state from context
     const {
         messages: supportMessages,
         connected,
@@ -72,167 +82,69 @@ export default function UnifiedChatPage() {
         sendMessage: sendSupportMessage,
         startNewChat: handleNewChat,
         initializeConnection,
+        chatDaysLeft,
+        // AI chat state from same context (single source of truth)
+        aiMessages,
+        aiLoading,
+        aiCooldown,
+        sendAIMessage,
     } = useSupportChat();
-    
-    // State for UI
-    const [selectedId, setSelectedId] = useState(null); // 'ai' or 'support'
+
+    // UI state
+    const [selectedId, setSelectedId] = useState(null);
     const [input, setInput] = useState('');
-    const [loading, setLoading] = useState(false);
-    
-    // AI chat state
-    const [aiMessages, setAiMessages] = useState([
-        {
-            role: 'bot',
-            text: 'Xin chào! 👋 Tôi là trợ lý AI của EatEase. Tôi có thể giúp bạn tìm món ăn, giải đáp thắc mắc về đặt bàn, chính sách và nhiều hơn nữa. Bạn cần hỗ trợ gì?',
-        },
-    ]);
-    const [aiCooldown, setAiCooldown] = useState(0);
-    
+
     const messagesEndRef = useRef(null);
     const selectedIdRef = useRef(null);
-    const cooldownRef = useRef(null);
 
     selectedIdRef.current = selectedId;
 
-    const scrollToBottom = useCallback(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const scrollToBottom = useCallback((behavior = 'smooth') => {
+        messagesEndRef.current?.scrollIntoView({ behavior });
     }, []);
 
+    // Scroll khi có tin nhắn mới (smooth)
     useEffect(() => {
-        scrollToBottom();
+        scrollToBottom('smooth');
     }, [supportMessages, aiMessages, scrollToBottom]);
+
+    // Scroll ngay lập tức khi chuyển tab để tránh nhảy lên đầu
+    useEffect(() => {
+        scrollToBottom('instant');
+    }, [selectedId, scrollToBottom]);
 
     // Initialize support chat connection when component mounts
     useEffect(() => {
         initializeConnection();
     }, [initializeConnection]);
 
-    // Load AI messages from localStorage (per user)
-    useEffect(() => {
-        const userId = user?._id || 'guest';
-        const storageKey = `tc_ai_messages_${userId}`;
-        
-        try {
-            const saved = localStorage.getItem(storageKey);
-            if (saved) {
-                const msgs = JSON.parse(saved);
-                setAiMessages(msgs);
-            } else {
-                // Reset to initial greeting for new user
-                setAiMessages([
-                    {
-                        role: 'bot',
-                        text: 'Xin chào! 👋 Tôi là trợ lý AI của EatEase. Tôi có thể giúp bạn tìm món ăn, giải đáp thắc mắc về đặt bàn, chính sách và nhiều hơn nữa. Bạn cần hỗ trợ gì?',
-                    },
-                ]);
-            }
-        } catch (e) {
-            console.error('Failed to load AI messages:', e);
-        }
-    }, [user?._id]);
-
-    // Save AI messages to localStorage (per user)
-    useEffect(() => {
-        const userId = user?._id || 'guest';
-        const storageKey = `tc_ai_messages_${userId}`;
-        
-        if (aiMessages.length > 1) {
-            try {
-                const toSave = aiMessages.slice(-50);
-                localStorage.setItem(storageKey, JSON.stringify(toSave));
-            } catch (e) {
-                console.error('Failed to save AI messages:', e);
-            }
-        }
-    }, [aiMessages, user?._id]);
-
     // Set initial conversation from URL
     useEffect(() => {
         const convParam = searchParams.get('conversation');
-        if (convParam) {
-            setSelectedId(convParam === 'ai' ? 'ai' : 'support');
-        } else {
-            setSelectedId('ai'); // Default to AI chat
-        }
+        setSelectedId(convParam === 'support' ? 'support' : 'ai');
     }, [searchParams]);
 
-    // Select conversation (AI or Support)
-    const selectConversation = (id) => {
-        setSelectedId(id);
-    };
+    // Select conversation
+    const selectConversation = (id) => setSelectedId(id);
 
-    // Send AI message
-    const sendAIMessage = async (messageText) => {
+    // Send message handler (delegates to context)
+    const handleSendAI = (messageText) => {
         const text = (messageText || input).trim();
-        if (!text || loading || aiCooldown > 0) return;
-
-        const userMsg = { role: 'user', text };
-        const newMessages = [...aiMessages, userMsg];
-        setAiMessages(newMessages);
+        if (!text) return;
+        sendAIMessage(text);
         setInput('');
-        setLoading(true);
-
-        try {
-            const history = newMessages.slice(1, -1).map((msg) => ({
-                role: msg.role,
-                text: msg.text,
-            }));
-
-            const response = await Axios({
-                ...SummaryApi.chat_message,
-                data: { message: text, history },
-            });
-
-            if (response.data?.success) {
-                const botMsg = { role: 'bot', text: response.data.data.reply };
-                setAiMessages((prev) => [...prev, botMsg]);
-            }
-        } catch (error) {
-            const serverMsg = error?.response?.data?.message;
-            setAiMessages((prev) => [
-                ...prev,
-                {
-                    role: 'bot',
-                    text: serverMsg || 'Xin lỗi, có lỗi xảy ra. Vui lòng thử lại sau ít phút! 🙏',
-                },
-            ]);
-        } finally {
-            setLoading(false);
-            startAICooldown(5);
-        }
     };
 
-    // Start AI cooldown
-    const startAICooldown = (seconds) => {
-        setAiCooldown(seconds);
-        clearInterval(cooldownRef.current);
-        cooldownRef.current = setInterval(() => {
-            setAiCooldown((prev) => {
-                if (prev <= 1) {
-                    clearInterval(cooldownRef.current);
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-    };
-
-    // Send support message
     const sendSupportMessageHandler = () => {
         const text = input.trim();
         if (!text) return;
-        
         sendSupportMessage(text);
         setInput('');
     };
 
-    // Handle send based on active conversation
     const handleSend = () => {
-        if (selectedId === 'ai') {
-            sendAIMessage();
-        } else {
-            sendSupportMessageHandler();
-        }
+        if (selectedId === 'ai') handleSendAI();
+        else sendSupportMessageHandler();
     };
 
     const handleKeyDown = (e) => {
@@ -305,9 +217,13 @@ export default function UnifiedChatPage() {
                         </div>
                         <div className="flex-1">
                             <div className="flex items-center gap-2">
-                                <span className={`font-semibold text-xs line-clamp-1 ${
-                                    isAIActive ? 'text-violet-700 dark:text-violet-400' : 'text-foreground'
-                                }`}>
+                                <span
+                                    className={`font-semibold text-xs line-clamp-1 ${
+                                        isAIActive
+                                            ? 'text-violet-700 dark:text-violet-400'
+                                            : 'text-foreground'
+                                    }`}
+                                >
                                     Trợ lý AI
                                 </span>
                                 <span className="text-[10px] bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full font-medium">
@@ -344,15 +260,22 @@ export default function UnifiedChatPage() {
                     >
                         <div
                             className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center shadow"
-                            style={{ background: 'linear-gradient(135deg, #C96048 0%, #d97a66 100%)' }}
+                            style={{
+                                background:
+                                    'linear-gradient(135deg, #C96048 0%, #d97a66 100%)',
+                            }}
                         >
                             <Headphones size={13} className="text-white" />
                         </div>
                         <div className="flex-1">
                             <div className="flex items-center gap-2">
-                                <span className={`font-semibold text-xs line-clamp-1 ${
-                                    isSupportActive ? 'text-[#C96048] dark:text-[#d97a66]' : 'text-foreground'
-                                }`}>
+                                <span
+                                    className={`font-semibold text-xs line-clamp-1 ${
+                                        isSupportActive
+                                            ? 'text-[#C96048] dark:text-[#d97a66]'
+                                            : 'text-foreground'
+                                    }`}
+                                >
                                     Chat với nhân viên
                                 </span>
                                 {supportClosed && (
@@ -362,8 +285,10 @@ export default function UnifiedChatPage() {
                                 )}
                             </div>
                             <p className="text-xs text-muted-foreground line-clamp-1">
-                                {supportMessages.length > 0 
-                                    ? supportMessages[supportMessages.length - 1].text 
+                                {supportMessages.length > 0
+                                    ? supportMessages[
+                                          supportMessages.length - 1
+                                      ].text
                                     : 'Bắt đầu hội thoại với nhân viên'}
                             </p>
                         </div>
@@ -376,13 +301,35 @@ export default function UnifiedChatPage() {
                 <div className="border-t border-border px-4 py-3">
                     <button className="flex items-center justify-between w-full text-sm text-muted-foreground hover:text-[#C96048] transition-colors">
                         <div className="flex items-center gap-2">
-                            <svg className="w-4 h-4 text-[#C96048]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            <svg
+                                className="w-4 h-4 text-[#C96048]"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
                             </svg>
-                            <span className="font-medium">Câu hỏi thường gặp</span>
+                            <span className="font-medium">
+                                Câu hỏi thường gặp
+                            </span>
                         </div>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 9l-7 7-7-7"
+                            />
                         </svg>
                     </button>
                 </div>
@@ -399,10 +346,14 @@ export default function UnifiedChatPage() {
                                 <Bot size={20} className="text-white" />
                             </div>
                             <div>
-                                <p className="font-semibold text-sm text-white">Trợ lý AI</p>
+                                <p className="font-semibold text-sm text-white">
+                                    Trợ lý AI
+                                </p>
                                 <div className="flex items-center gap-1">
                                     <span className="w-1.5 h-1.5 bg-green-400 rounded-full" />
-                                    <p className="text-violet-200 text-xs">EatEase Restaurant</p>
+                                    <p className="text-violet-200 text-xs">
+                                        EatEase Restaurant
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -413,15 +364,23 @@ export default function UnifiedChatPage() {
                         {aiMessages.map((msg, i) => {
                             const isUser = msg.role === 'user';
                             return (
-                                <div key={i} className={`flex items-end gap-2 mb-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                                <div
+                                    key={i}
+                                    className={`flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}
+                                >
                                     {!isUser && (
-                                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow">
-                                            <Bot size={14} className="text-white" />
+                                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center flex-shrink-0 shadow">
+                                            <Bot
+                                                size={14}
+                                                className="text-white"
+                                            />
                                         </div>
                                     )}
-                                    <div className={`max-w-sm flex flex-col gap-1 ${isUser ? 'items-end' : 'items-start'}`}>
+                                    <div
+                                        className={`max-w-sm flex flex-col gap-1 ${isUser ? 'items-end' : 'items-start'}`}
+                                    >
                                         <div
-                                            className={`px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                                            className={`px-2 py-3 my-1 rounded-2xl text-sm leading-relaxed shadow-sm ${
                                                 isUser
                                                     ? 'text-white rounded-br-sm'
                                                     : 'bg-card dark:bg-gray-800 border border-border text-foreground rounded-bl-sm'
@@ -429,7 +388,9 @@ export default function UnifiedChatPage() {
                                             style={{
                                                 whiteSpace: 'pre-wrap',
                                                 wordBreak: 'break-word',
-                                                background: isUser ? 'linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)' : undefined,
+                                                background: isUser
+                                                    ? 'linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)'
+                                                    : undefined,
                                             }}
                                         >
                                             {msg.text}
@@ -438,17 +399,17 @@ export default function UnifiedChatPage() {
                                 </div>
                             );
                         })}
-                        {loading && <TypingIndicator type="ai" />}
+                        {aiLoading && <TypingIndicator type="ai" />}
                         <div ref={messagesEndRef} />
                     </div>
 
                     {/* Quick suggestions */}
-                    {aiMessages.length === 1 && !loading && (
+                    {aiMessages.length === 1 && !aiLoading && (
                         <div className="px-5 pb-2 flex flex-wrap gap-1.5">
                             {QUICK_SUGGESTIONS.map((s) => (
                                 <button
                                     key={s}
-                                    onClick={() => sendAIMessage(s)}
+                                    onClick={() => handleSendAI(s)}
                                     className="text-[11px] px-2.5 py-1 rounded-full bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-400 border border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-950/50 transition cursor-pointer"
                                 >
                                     {s}
@@ -466,16 +427,25 @@ export default function UnifiedChatPage() {
                                 onKeyDown={handleKeyDown}
                                 placeholder="Nhập câu hỏi của bạn..."
                                 rows={1}
-                                disabled={loading}
+                                disabled={aiLoading}
                                 className="flex-1 resize-none bg-transparent text-sm outline-none leading-relaxed max-h-24 overflow-y-auto placeholder:text-muted-foreground text-foreground"
                             />
                             <button
                                 onClick={handleSend}
-                                disabled={!input.trim() || loading || aiCooldown > 0}
+                                disabled={
+                                    !input.trim() || aiLoading || aiCooldown > 0
+                                }
                                 className="shrink-0 w-8 h-8 rounded-lg text-white flex items-center justify-center hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm text-[11px] font-bold"
-                                style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)' }}
+                                style={{
+                                    background:
+                                        'linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)',
+                                }}
                             >
-                                {aiCooldown > 0 ? aiCooldown : <Send size={14} />}
+                                {aiCooldown > 0 ? (
+                                    aiCooldown
+                                ) : (
+                                    <Send size={14} />
+                                )}
                             </button>
                         </div>
                         <p className="text-center text-xs text-muted-foreground mt-2 flex items-center justify-center gap-1">
@@ -490,18 +460,27 @@ export default function UnifiedChatPage() {
                     {/* Support Chat Header */}
                     <div
                         className="px-5 py-3 flex items-center justify-between shrink-0"
-                        style={{ background: 'linear-gradient(135deg, #C96048 0%, #d97a66 100%)' }}
+                        style={{
+                            background:
+                                'linear-gradient(135deg, #C96048 0%, #d97a66 100%)',
+                        }}
                     >
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur flex items-center justify-center">
                                 <Headphones size={20} className="text-white" />
                             </div>
                             <div>
-                                <p className="font-semibold text-sm text-white">Chat với nhân viên</p>
+                                <p className="font-semibold text-sm text-white">
+                                    Chat với nhân viên
+                                </p>
                                 <div className="flex items-center gap-1">
-                                    <span className={`w-1.5 h-1.5 rounded-full ${supportClosed ? 'bg-gray-300' : 'bg-green-400'}`} />
+                                    <span
+                                        className={`w-1.5 h-1.5 rounded-full ${supportClosed ? 'bg-gray-300' : 'bg-green-400'}`}
+                                    />
                                     <p className="text-white/80 text-xs">
-                                        {supportClosed ? 'Đã đóng' : 'Đang hoạt động'}
+                                        {supportClosed
+                                            ? 'Đã đóng'
+                                            : 'Đang hoạt động'}
                                     </p>
                                 </div>
                             </div>
@@ -521,58 +500,84 @@ export default function UnifiedChatPage() {
                                 </div>
                             </div>
                         )}
-                        
+
                         {/* Assigned status banner */}
-                        {(requestStatus === 'assigned' || requestStatus === 'active') && assignedWaiterName && (
-                            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-xl">
-                                <div className="flex items-center gap-2 text-green-700">
-                                    <div className="w-2 h-2 bg-green-500 rounded-full" />
-                                    <p className="text-xs font-medium">
-                                        {assignedWaiterName} đang hỗ trợ bạn
+                        {(requestStatus === 'assigned' ||
+                            requestStatus === 'active') &&
+                            assignedWaiterName && (
+                                <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-xl">
+                                    <div className="flex items-center gap-2 text-green-700">
+                                        <div className="w-2 h-2 bg-green-500 rounded-full" />
+                                        <p className="text-xs font-medium">
+                                            {assignedWaiterName} đang hỗ trợ bạn
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                        {supportMessages.length === 0 &&
+                            requestStatus !== 'waiting' && (
+                                <div className="text-center mt-10">
+                                    <div
+                                        className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3"
+                                        style={{
+                                            background:
+                                                'linear-gradient(135deg, rgba(201,96,72,0.1) 0%, rgba(217,122,102,0.1) 100%)',
+                                        }}
+                                    >
+                                        <Headphones className="w-8 h-8 text-[#C96048]" />
+                                    </div>
+                                    <p className="text-sm text-foreground font-medium">
+                                        Bắt đầu hội thoại
+                                    </p>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Gửi tin nhắn để nhận hỗ trợ từ nhân viên
                                     </p>
                                 </div>
-                            </div>
-                        )}
-                        
-                        {supportMessages.length === 0 && requestStatus !== 'waiting' && (
-                            <div className="text-center mt-10">
-                                <div
-                                    className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3"
-                                    style={{ background: 'linear-gradient(135deg, rgba(201,96,72,0.1) 0%, rgba(217,122,102,0.1) 100%)' }}
-                                >
-                                    <Headphones className="w-8 h-8 text-[#C96048]" />
-                                </div>
-                                <p className="text-sm text-foreground font-medium">Bắt đầu hội thoại</p>
-                                <p className="text-xs text-muted-foreground mt-1">Gửi tin nhắn để nhận hỗ trợ từ nhân viên</p>
-                            </div>
-                        )}
+                            )}
 
                         {supportMessages.map((msg, i) => {
                             // Handle system messages
                             if (msg.senderRole === 'system') {
                                 return (
-                                    <div key={i} className="flex justify-center mb-3">
+                                    <div
+                                        key={i}
+                                        className="flex justify-center mb-3"
+                                    >
                                         <div className="px-3 py-1.5 rounded-full bg-muted text-xs text-muted-foreground">
                                             {msg.text}
                                         </div>
                                     </div>
                                 );
                             }
-                            
-                            const isAdmin = msg.senderRole === 'admin' || msg.senderRole === 'waiter';
+
+                            const isAdmin =
+                                msg.senderRole === 'admin' ||
+                                msg.senderRole === 'waiter';
                             const isCustomer = !isAdmin;
                             return (
-                                <div key={i} className={`flex items-end gap-2 mb-3 ${isAdmin ? 'justify-start' : 'justify-end'}`}>
+                                <div
+                                    key={i}
+                                    className={`flex items-end gap-2 mb-3 ${isAdmin ? 'justify-start' : 'justify-end'}`}
+                                >
                                     {isAdmin && (
                                         <div
                                             className="w-8 h-8 rounded-full flex items-center justify-center shadow"
-                                            style={{ background: 'linear-gradient(135deg, #C96048 0%, #d97a66 100%)' }}
+                                            style={{
+                                                background:
+                                                    'linear-gradient(135deg, #C96048 0%, #d97a66 100%)',
+                                            }}
                                         >
-                                            <Headphones size={14} className="text-white" />
+                                            <Headphones
+                                                size={14}
+                                                className="text-white"
+                                            />
                                         </div>
                                     )}
 
-                                    <div className={`max-w-sm flex flex-col gap-1 ${isAdmin ? 'items-start' : 'items-end'}`}>
+                                    <div
+                                        className={`max-w-sm flex flex-col gap-1 ${isAdmin ? 'items-start' : 'items-end'}`}
+                                    >
                                         <div
                                             className={`px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
                                                 isAdmin
@@ -582,23 +587,30 @@ export default function UnifiedChatPage() {
                                             style={{
                                                 whiteSpace: 'pre-wrap',
                                                 wordBreak: 'break-word',
-                                                background: isAdmin ? undefined : 'linear-gradient(135deg, #C96048 0%, #d97a66 100%)',
+                                                background: isAdmin
+                                                    ? undefined
+                                                    : 'linear-gradient(135deg, #C96048 0%, #d97a66 100%)',
                                             }}
                                         >
                                             {msg.text}
                                         </div>
-                                        <span className="text-xs text-muted-foreground px-1">{formatTime(msg.createdAt)}</span>
+                                        <span className="text-xs text-muted-foreground px-1">
+                                            {formatTime(msg.createdAt)}
+                                        </span>
                                     </div>
 
                                     {isCustomer && (
                                         <div
                                             className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
                                             style={{
-                                                background: 'linear-gradient(135deg, rgba(201,96,72,0.15) 0%, rgba(217,122,102,0.15) 100%)',
+                                                background:
+                                                    'linear-gradient(135deg, rgba(201,96,72,0.15) 0%, rgba(217,122,102,0.15) 100%)',
                                                 color: '#C96048',
                                             }}
                                         >
-                                            {user?.name?.charAt(0)?.toUpperCase() || 'K'}
+                                            {user?.name
+                                                ?.charAt(0)
+                                                ?.toUpperCase() || 'K'}
                                         </div>
                                     )}
                                 </div>
@@ -611,11 +623,24 @@ export default function UnifiedChatPage() {
                     <div className="bg-card dark:bg-gray-900 border-t border-border px-4 py-3 shrink-0">
                         {supportClosed ? (
                             <div className="text-center py-3">
-                                <p className="text-sm text-muted-foreground mb-3">Hội thoại đã đóng</p>
+                                <p className="text-sm text-muted-foreground mb-1">
+                                    Hội thoại đã đóng
+                                </p>
+                                {chatDaysLeft !== null && chatDaysLeft >= 0 && (
+                                    <p className="text-[11px] text-muted-foreground/60 italic mb-3">
+                                        {chatDaysLeft > 0
+                                            ? `📋 Lịch sử chat sẽ tự xóa sau ${chatDaysLeft} ngày`
+                                            : '📋 Lịch sử chat sẽ sớm bị xóa'}
+                                    </p>
+                                )}
+                                {!chatDaysLeft && <div className="mb-3" />}
                                 <button
                                     onClick={handleNewChat}
                                     className="inline-flex items-center gap-2 px-4 py-2 text-white text-sm font-medium rounded-lg hover:opacity-90 transition-all shadow-sm"
-                                    style={{ background: 'linear-gradient(135deg, #C96048 0%, #d97a66 100%)' }}
+                                    style={{
+                                        background:
+                                            'linear-gradient(135deg, #C96048 0%, #d97a66 100%)',
+                                    }}
                                 >
                                     <RefreshCw size={14} />
                                     Bắt đầu hội thoại mới
@@ -626,7 +651,9 @@ export default function UnifiedChatPage() {
                                 <div className="flex items-end gap-3 bg-background dark:bg-gray-950 border border-border rounded-xl px-3 py-2 focus-within:border-[#C96048] transition-all">
                                     <textarea
                                         value={input}
-                                        onChange={(e) => setInput(e.target.value)}
+                                        onChange={(e) =>
+                                            setInput(e.target.value)
+                                        }
                                         onKeyDown={handleKeyDown}
                                         placeholder="Nhập tin nhắn của bạn..."
                                         rows={1}
@@ -637,14 +664,25 @@ export default function UnifiedChatPage() {
                                         onClick={handleSend}
                                         disabled={!input.trim() || !connected}
                                         className="shrink-0 w-8 h-8 rounded-lg text-white flex items-center justify-center hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
-                                        style={{ background: 'linear-gradient(135deg, #C96048, #d97a66)' }}
+                                        style={{
+                                            background:
+                                                'linear-gradient(135deg, #C96048, #d97a66)',
+                                        }}
                                     >
                                         <Send size={14} />
                                     </button>
                                 </div>
                                 <p className="text-center text-xs text-muted-foreground mt-2 flex items-center justify-center gap-1">
                                     <span className="text-[#C96048]">✦</span>
-                                    Nhấn <kbd className="px-1 py-0.5 bg-muted rounded text-[10px] border border-border">Enter</kbd> để gửi, <kbd className="px-1 py-0.5 bg-muted rounded text-[10px] border border-border">Shift+Enter</kbd> để xuống dòng.
+                                    Nhấn{' '}
+                                    <kbd className="px-1 py-0.5 bg-muted rounded text-[10px] border border-border">
+                                        Enter
+                                    </kbd>{' '}
+                                    để gửi,{' '}
+                                    <kbd className="px-1 py-0.5 bg-muted rounded text-[10px] border border-border">
+                                        Shift+Enter
+                                    </kbd>{' '}
+                                    để xuống dòng.
                                 </p>
                             </>
                         )}
@@ -655,15 +693,32 @@ export default function UnifiedChatPage() {
                 <div className="flex-1 flex flex-col items-center justify-center gap-4 bg-background dark:bg-gray-950">
                     <div
                         className="w-16 h-16 rounded-2xl flex items-center justify-center"
-                        style={{ background: 'linear-gradient(135deg, rgba(201,96,72,0.1) 0%, rgba(217,122,102,0.1) 100%)' }}
+                        style={{
+                            background:
+                                'linear-gradient(135deg, rgba(201,96,72,0.1) 0%, rgba(217,122,102,0.1) 100%)',
+                        }}
                     >
-                        <svg className="w-8 h-8 text-[#C96048]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        <svg
+                            className="w-8 h-8 text-[#C96048]"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={1.5}
+                                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                            />
                         </svg>
                     </div>
                     <div className="text-center">
-                        <p className="text-sm font-medium text-foreground">Chọn một hội thoại để bắt đầu</p>
-                        <p className="text-xs text-muted-foreground mt-1">Danh sách khách hàng hiển thị bên trái</p>
+                        <p className="text-sm font-medium text-foreground">
+                            Chọn một hội thoại để bắt đầu
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                            Danh sách khách hàng hiển thị bên trái
+                        </p>
                     </div>
                 </div>
             )}

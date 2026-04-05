@@ -6,6 +6,8 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const MODEL_FALLBACK_CHAIN = [
     "gemini-2.0-flash-lite",
     "gemini-2.0-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-1.5-flash",
 ];
 
 const BASE_SYSTEM_PROMPT = `Bạn là trợ lý AI của EatEase Restaurant — một nhà hàng hiện đại chuyên phục vụ các món ăn đa dạng với hệ thống đặt bàn và gọi món trực tuyến.
@@ -98,6 +100,7 @@ const ipLastRequest = new Map();
 const RATE_LIMIT_MS = 4000; // tối thiểu 4 giây giữa 2 request AI cùng 1 IP
 
 // ─── Gemini fallback chain ──────────────────────────────────────────────────
+// Skip sang model tiếp theo khi gặp các lỗi quota/unavailable
 const SKIP_STATUSES = new Set([429, 404, 503]);
 
 /**
@@ -270,14 +273,34 @@ export async function chatController(req, res) {
             },
         });
     } catch (error) {
-        console.error("[Chat] AI error:", error.status, error.statusText);
+        // Log đầy đủ để debug
+        console.error("[Chat] AI error details:", {
+            status: error.status,
+            statusText: error.statusText,
+            message: error.message,
+            errorDetails: error.errorDetails || error.details,
+        });
 
         if (error.status === 429) {
+            // Kiểm tra xem là quota hàng ngày hay rate limit ngắn hạn
+            const isQuotaExceeded =
+                error.message?.includes('quota') ||
+                error.message?.includes('RESOURCE_EXHAUSTED') ||
+                error.errorDetails?.some?.(d => d.reason === 'RATE_LIMIT_EXCEEDED');
+
+            const userMsg = isQuotaExceeded
+                ? "Hệ thống AI đang quá tải, vui lòng thử lại sau vài phút! ⏳"
+                : "Vui lòng chờ vài giây trước khi gửi tin tiếp theo ⏳";
+
             return res.status(429).json({
-                message: "AI đang bận, vui lòng thử lại sau vài phút! ⏳",
+                message: userMsg,
                 error: true,
                 success: false,
             });
+        }
+
+        if (error.status === 400) {
+            console.error("[Chat] Bad request to Gemini — possible invalid history format");
         }
 
         return res.status(500).json({

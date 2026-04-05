@@ -452,9 +452,15 @@ export function Sidebar() {
                     </div>
                     <div className="border-t border-border p-2">
                         <nav className="space-y-1">
-                            {bottomNavigation.map((item) => (
-                                <NavItem key={item.name} item={item} isBottom />
-                            ))}
+                            {bottomNavigation
+                                .filter(
+                                    (item) =>
+                                        !item.roles ||
+                                        item.roles.includes(user.role)
+                                )
+                                .map((item) => (
+                                    <NavItem key={item.name} item={item} isBottom />
+                                ))}
                         </nav>
                     </div>
                 </div>

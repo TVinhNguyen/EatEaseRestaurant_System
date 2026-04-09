@@ -22,6 +22,10 @@ async function connectDB() {
         const caCertPath = path.join(__dirname, '../cacert.pem');
         if (fs.existsSync(caCertPath)) {
             mongooseOptions.ca = [fs.readFileSync(caCertPath)];
+        } else if (process.env.NODE_ENV !== 'production') {
+            // Dev only: cho phép invalid cert nếu không có CA file
+            mongooseOptions.tls = true;
+            mongooseOptions.tlsAllowInvalidCertificates = true;
         }
 
         await mongoose.connect(process.env.MONGODB_URL, mongooseOptions)

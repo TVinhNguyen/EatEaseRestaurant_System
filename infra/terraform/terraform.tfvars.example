@@ -1,0 +1,23 @@
+aws_region   = "ap-southeast-1"
+environment  = "dev"
+project_name = "eatease"
+
+# Gắn ACM cert ARN nếu muốn bật HTTPS cho ALB (khuyên dùng)
+acm_certificate_arn = ""
+
+ec2_instance_type    = "t3.small"
+ec2_root_volume_size = 30
+
+# Dán SSH public key nếu muốn SSH bằng key pair
+ssh_public_key = ""
+
+docdb_master_username = "eateaseadmin"
+docdb_instance_class  = "db.t3.medium"
+docdb_instance_count  = 1
+docdb_engine_version  = "5.0.0"
+
+# Bật VPC endpoints để SSM hoạt động không phụ thuộc NAT
+enable_ssm_vpc_endpoints = true
+
+# DEV: true để destroy nhanh. PROD: đặt false.
+docdb_skip_final_snapshot = true

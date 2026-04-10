@@ -1,3 +1,94 @@
+# EatEase - Kiến trúc triển khai AWS (hiện tại)
+
+## 1) Tổng quan
+
+Hệ thống đang chạy theo mô hình:
+
+- Frontend SPA (Vite/React) trên **S3 + CloudFront**
+- Backend Node.js (Express + Socket.IO) trên **EC2 private subnet**
+- CSDL trên **Amazon DocumentDB**
+- Public entry cho API qua **ALB**
+- Quản trị EC2 bằng **SSM Session Manager** (không cần SSH public)
+
+## 2) Luồng truy cập
+
+### 2.1 Frontend
+
+User → `https://<cloudfront-domain>` → CloudFront → S3 (file tĩnh)
+
+### 2.2 API (đã fix Mixed Content)
+
+Browser (HTTPS) gọi:
+
+- `https://<cloudfront-domain>/api/*`
+- `https://<cloudfront-domain>/socket.io/*`
+
+CloudFront sẽ route đến origin ALB (`apiAlbOrigin`) qua HTTP nội bộ AWS.
+
+Kết quả: browser không còn gọi `http://<alb-dns>` trực tiếp nên không bị `Mixed Content`.
+
+## 3) Network
+
+- VPC: `10.30.0.0/16`
+- Public subnets: ALB, NAT
+- Private subnets: EC2 backend, DocumentDB, VPC Endpoints (SSM)
+
+## 4) Security Groups
+
+- ALB SG: mở `80/443` từ internet
+- EC2 SG: chỉ nhận `80` từ ALB SG
+- DocDB SG: chỉ nhận `27017` từ EC2 SG
+
+## 5) Compute / Runtime
+
+- EC2 chạy Nginx reverse proxy → Node app port `8080`
+- Process manager: PM2 (`eatease-server`)
+- IAM role EC2: `AmazonSSMManagedInstanceCore`
+
+## 6) Database
+
+- Engine: DocumentDB 5.0
+- Kết nối qua `MONGODB_URL`
+- URI có `tls=true&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false`
+- Terraform đã `urlencode()` password trong output mẫu
+
+## 7) CDN / Routing
+
+CloudFront hiện có:
+
+- Default behavior: phục vụ frontend từ S3
+- Ordered behavior `/api/*`: forward ALB, no-cache
+- Ordered behavior `/socket.io/*`: forward ALB, no-cache, hỗ trợ realtime
+- SPA fallback: lỗi `403/404` trả về `index.html`
+
+## 8) Terraform outputs quan trọng
+
+- `cloudfront_domain_name`
+- `frontend_api_base_url` (khuyến nghị dùng cho frontend build)
+- `api_alb_dns_name`
+- `docdb_connection_example` (sensitive)
+- `frontend_bucket_name`
+
+## 9) Biến môi trường nên dùng
+
+### Backend
+
+- `PORT=8080`
+- `MONGODB_URL=<terraform output -raw docdb_connection_example>`
+- `FRONTEND_URL=https://<cloudfront_domain_name>`
+- JWT/Stripe/Email/Google/Gemini keys
+
+### Frontend (build time)
+
+- `VITE_API_URL=https://<cloudfront_domain_name>`
+- `VITE_SERVER_URL=https://<cloudfront_domain_name>`
+- `VITE_GOOGLE_CLIENT_ID=<google-client-id>`
+
+## 10) Ghi chú production
+
+- Nên bật HTTPS end-to-end cho ALB (`acm_certificate_arn`)
+- Nên bỏ dev fallback TLS invalid cert ở backend
+- Nên thêm monitoring + alarm (CloudWatch)
 # EatEase Restaurant System - Architecture
 
 ## Tổng quan
@@ -251,91 +342,21 @@ GEMINI_API_KEY=...
 ## Environment Variables (Frontend - Build time)
 
 ```
-VITE_API_URL=http://eatease-dev-api-alb-xxx.ap-southeast-1.elb.amazonaws.com
-VITE_SERVER_URL=http://eatease-dev-api-alb-xxx.ap-southeast-1.elb.amazonaws.com
+VITE_API_URL=https://<cloudfront_domain_name>
+VITE_SERVER_URL=https://<cloudfront_domain_name>
 VITE_GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
 ```
 
----
-
-## Deployment Environments
-
-### Development (dev)
-- EC2: t3.small (1 instance)
-- DocumentDB: t3.medium (1 instance)
-- NAT: 1 gateway
-- Backup: 7 days
-- Cost: ~$100-150/month
-
-### Staging (staging)
-- EC2: t3.medium (1-2 instances behind ASG)
-- DocumentDB: r5.large (2-3 instances, replicated)
-- NAT: 2 gateways (1 per AZ)
-- Backup: 14 days
-- Cost: ~$300-400/month
-
-### Production (prod)
-- EC2: t3.medium → t3.large (ASG 2-5 instances)
-- DocumentDB: r5.large (3+ instances, replicated)
-- NAT: 2 gateways (1 per AZ)
-- ALB: Multi-AZ + ACM cert + Route53
-- Backup: 30 days, deletion protection enabled
-- Cost: ~$1000+/month
+**Note**: Dùng CloudFront HTTPS domain để tránh Mixed Content error. Browser sẽ gửi `/api/*` qua cùng origin HTTPS.
 
 ---
 
-## Monitoring & Logging (Future)
+## Tài liệu bổ sung
 
-- **CloudWatch**: EC2 CPU, memory, disk, network
-- **RDS Enhanced Monitoring**: DocumentDB performance
-- **ALB Logs**: HTTP request logs → S3
-- **Application Logs**: PM2 logs, CloudWatch agent
-- **Alarms**: High CPU, DB replication lag, ALB unhealthy targets
-
----
-
-## Disaster Recovery
-
-- **RTO**: 1 hour (rebuild stack via Terraform)
-- **RPO**: 7-30 days (DocumentDB automated backups)
-- **Multi-AZ**: ALB, DocumentDB span 2 AZ
-- **Backup**: Automated daily snapshots to S3
-- **IaC**: Terraform code in Git
-
----
-
-## Scaling Strategy
-
-### Horizontal
-- **Frontend**: CloudFront edge locations (automatic)
-- **Backend**: Auto Scaling Group (2-5 instances)
-- **Database**: DocumentDB auto-scaling storage + read replicas
-
-### Vertical
-- **EC2**: Scale instance type (t3.small → t3.medium → t3.large)
-- **DocumentDB**: Scale instance class or add replicas
-
----
-
-## Cost Optimization
-
-1. **On-Demand**: EC2 → Reserved instances (50% saving)
-2. **DocumentDB**: Opt for smaller instance first, scale on demand
-3. **NAT Gateway**: Consider NAT instance for dev (cheaper)
-4. **S3**: Lifecycle policies (archive old versions)
-5. **CloudFront**: Pay for data transfer (cheaper than ALB)
-6. **Backup**: Adjust retention period per environment
-
----
-
-## Next Steps
-
-1. ✅ Terraform infrastructure
-2. ✅ Deploy backend
-3. ✅ Deploy frontend
-4. 🔄 Setup CI/CD pipeline (GitHub Actions → deploy on push)
-5. 🔄 Setup monitoring + alerts (CloudWatch)
-6. 🔄 Setup Route53 + ACM for HTTPS domain
-7. 🔄 Auto-scaling groups for backend
-8. 🔄 Database backups to S3
-9. 🔄 Disaster recovery plan
+Xem [DEPLOYMENT.md](DEPLOYMENT.md) cho:
+- Hướng dẫn triển khai chi tiết (Terraform, Backend, Frontend)
+- Troubleshooting guide
+- Production checklist
+- Monitoring & logging strategy
+- Scaling & cost optimization
+- Next steps sau deployment

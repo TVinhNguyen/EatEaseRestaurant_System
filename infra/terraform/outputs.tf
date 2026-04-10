@@ -39,3 +39,7 @@ output "frontend_bucket_name" {
 output "cloudfront_domain_name" {
   value = aws_cloudfront_distribution.frontend.domain_name
 }
+
+output "frontend_api_base_url" {
+  value = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+}

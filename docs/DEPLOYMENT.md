@@ -1,3 +1,173 @@
+# EatEase - Quy trình deploy AWS (đã cập nhật)
+
+## 0) Mục tiêu
+
+Deploy stack:
+
+- Terraform tạo hạ tầng (VPC, ALB, EC2 private, DocumentDB, S3, CloudFront)
+- Backend chạy trên EC2 bằng PM2
+- Frontend build local và sync lên S3
+- CloudFront phục vụ frontend + proxy `/api` và `/socket.io`
+
+---
+
+## 1) Terraform
+
+```bash
+cd infra/terraform
+terraform init
+terraform plan
+terraform apply
+terraform output
+```
+
+Output cần dùng:
+
+- `backend_instance_id`
+- `cloudfront_domain_name`
+- `frontend_bucket_name`
+- `frontend_api_base_url`
+- `docdb_connection_example` (sensitive)
+
+---
+
+## 2) Deploy backend (EC2 private qua SSM)
+
+### 2.1 Vào EC2
+
+```bash
+aws ssm start-session --target <backend_instance_id> --region ap-southeast-1
+```
+
+### 2.2 Clone code và cài package
+
+```bash
+cd /opt/eatease
+git clone <repo-url> EatEaseRestaurant_System || true
+cd EatEaseRestaurant_System/server
+npm ci
+```
+
+### 2.3 Tạo `.env`
+
+```bash
+cat > .env <<'EOF'
+NODE_ENV=production
+PORT=8080
+MONGODB_URL=<terraform output -raw docdb_connection_example>
+FRONTEND_URL=https://<cloudfront_domain_name>
+
+SECRET_KEY_ACCESS_TOKEN=<random>
+SECRET_KEY_REFRESH_TOKEN=<random>
+
+GOOGLE_CLIENT_ID=<google-client-id>
+STRIPE_SECRET_KEY=<stripe-key>
+STRIPE_WEBHOOK_SECRET=<stripe-webhook>
+EMAIL_USER=<email>
+EMAIL_PASS=<email-app-pass>
+GEMINI_API_KEY=<gemini-key>
+EOF
+```
+
+### 2.4 Chạy PM2
+
+```bash
+pm2 start index.js --name eatease-server
+pm2 save
+pm2 status
+pm2 logs eatease-server --lines 50
+```
+
+---
+
+## 3) Deploy frontend (fix Mixed Content chuẩn)
+
+### 3.1 Build frontend với HTTPS CloudFront URL
+
+```bash
+cd client
+npm ci
+VITE_API_URL=https://<cloudfront_domain_name> \
+VITE_SERVER_URL=https://<cloudfront_domain_name> \
+VITE_GOOGLE_CLIENT_ID=<google-client-id> \
+npm run build
+```
+
+Ghi chú: dùng `https://<cloudfront_domain_name>` để browser gọi `/api/*` cùng origin HTTPS, không bị Mixed Content.
+
+### 3.2 Upload build lên S3
+
+```bash
+aws s3 sync dist/ s3://<frontend_bucket_name>/ --delete
+```
+
+### 3.3 Invalidate CloudFront cache
+
+```bash
+aws cloudfront create-invalidation --distribution-id <distribution_id> --paths "/*"
+```
+
+### 3.4 Verify
+
+- Mở: `https://<cloudfront_domain_name>`
+- DevTools Network phải thấy request API dạng:
+  - `https://<cloudfront_domain_name>/api/...`
+- Không còn request `http://<alb-dns>/api/...`
+
+---
+
+## 4) Update code theo branch rồi pull về EC2
+
+### Local
+
+```bash
+git checkout -b deploy-aws-dev
+git add .
+git commit -m "your message"
+git push origin deploy-aws-dev
+```
+
+### EC2
+
+```bash
+cd /opt/eatease/EatEaseRestaurant_System
+git fetch origin
+git checkout deploy-aws-dev
+git pull origin deploy-aws-dev
+cd server
+npm ci
+pm2 restart eatease-server
+```
+
+---
+
+## 5) Troubleshooting nhanh
+
+### 5.1 Mixed Content
+
+Nếu gặp lại lỗi này, kiểm tra build env của frontend:
+
+- `VITE_API_URL=https://<cloudfront_domain_name>`
+- `VITE_SERVER_URL=https://<cloudfront_domain_name>`
+
+### 5.2 Google OAuth `Missing required parameter client_id`
+
+Thiếu `VITE_GOOGLE_CLIENT_ID` lúc build. Build lại với biến này.
+
+### 5.3 DocumentDB TLS lỗi cert
+
+Kiểm tra log PM2 và cấu hình `MONGODB_URL`. Dev có thể cần workaround tạm, production phải dùng CA/TLS chuẩn.
+
+---
+
+## 6) Checklist trước khi demo
+
+- [ ] `terraform output` có đủ output mới
+- [ ] Backend `pm2 status` online
+- [ ] Frontend load từ CloudFront
+- [ ] API request đi qua `https://<cloudfront>/api/*`
+- [ ] Login Google không lỗi `client_id`
+- [ ] Không còn Mixed Content trong console
 # EatEase Restaurant System - AWS Deployment Guide
 
 ## Mục lục
@@ -259,19 +429,18 @@ Trên máy local:
 
 ```bash
 cd client
+npm ci
 
-# Tạo file .env.production (optional)
-cat > .env.production <<'EOF'
-VITE_API_URL=http://eatease-dev-api-alb-xxx.ap-southeast-1.elb.amazonaws.com
-VITE_SERVER_URL=http://eatease-dev-api-alb-xxx.ap-southeast-1.elb.amazonaws.com
-VITE_GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
-EOF
-
-# Build
+# Build với HTTPS CloudFront URL
+VITE_API_URL=https://<cloudfront_domain_name> \
+VITE_SERVER_URL=https://<cloudfront_domain_name> \
+VITE_GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com \
 npm run build
 
 # Output: dist/
 ```
+
+**Quan trọng**: Phải dùng `https://<cloudfront_domain_name>` để browser gửi API qua cùng domain HTTPS. Nếu build với HTTP ALB DNS, sẽ bị Mixed Content error.
 
 ### 4.2 Upload lên S3
 
